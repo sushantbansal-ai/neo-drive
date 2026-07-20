@@ -19,7 +19,6 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:migrate:reset": "prisma migrate reset",
     "prisma:seed": "tsx prisma/seed.ts",
-    "prisma:studio": "prisma studio",
     "db:setup": "npm run prisma:migrate && npm run prisma:seed",
     "test": "jest",
     "test:watch": "jest --watch",
