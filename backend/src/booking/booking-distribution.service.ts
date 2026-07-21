@@ -19,11 +19,36 @@ export class BookingDistributionService {
           in: vehicles.map((vehicle) => vehicle.id),
         },
       },
-      orderBy: [{ reservationCount: 'asc', }, { lastReservationEndDateTime: 'desc' }],
     });
 
-    return vehicleStats.length > 0
-      ? vehicles.find((vehicle) => vehicle.id === vehicleStats[0].vehicleId) ?? null
-      : vehicles[0];
+    const vehiclesWithStats = vehicles.map(vehicle => {
+      const stats = vehicleStats.find(stat => stat.vehicleId === vehicle.id);
+      return {
+        ...vehicle,
+        reservationCount: stats ? stats.reservationCount : 0,
+        lastReservationEndDateTime: stats ? stats.lastReservationEndDateTime : null,
+      };
+    }
+    );
+
+    vehiclesWithStats.sort((a, b) => {
+      if (a.reservationCount !== b.reservationCount) {
+        return a.reservationCount - b.reservationCount;
+      }
+      if (a.lastReservationEndDateTime && b.lastReservationEndDateTime) {
+        return new Date(a.lastReservationEndDateTime).getTime() - new Date(b.lastReservationEndDateTime).getTime();
+      }
+      if (a.lastReservationEndDateTime) {
+        return 1;
+      }
+      if (b.lastReservationEndDateTime) {
+        return -1;
+      }
+      return 0;
+    });
+
+    const selectedVehicle = vehiclesWithStats[0];
+
+    return selectedVehicle;
   }
 }
