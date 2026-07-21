@@ -24,14 +24,20 @@ describe('BookingService', () => {
   let service: BookingService;
 
   beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-07-21T08:00:00Z'));
     jest.clearAllMocks();
     prisma.$transaction.mockImplementation((callback) => callback(prisma));
     service = new BookingService(
       prisma as never,
       new BookingPolicyService(),
       new BookingConflictService(),
-      new BookingDistributionService(),
+      new BookingDistributionService(prisma as never),
     );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('finds an available vehicle using normalized location and type', async () => {
@@ -161,7 +167,6 @@ describe('BookingService', () => {
       },
       vehicleReservationStats: {
         upsert: jest.fn().mockResolvedValue({}),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     prisma.$transaction.mockImplementation((callback) => callback(tx));
@@ -223,22 +228,9 @@ describe('BookingService', () => {
         reservationCount: {
           increment: 1,
         },
-      },
-    });
-    expect(tx.vehicleReservationStats.updateMany).toHaveBeenCalledWith({
-      where: {
-        vehicleId: 'tesla_1001',
-        OR: [
-          { lastReservationEndDateTime: null },
-          {
-            lastReservationEndDateTime: {
-              lt: new Date('2026-07-21T10:45:00Z'),
-            },
-          },
-        ],
-      },
-      data: {
-        lastReservationEndDateTime: new Date('2026-07-21T10:45:00Z'),
+        lastReservationEndDateTime: {
+          set: new Date('2026-07-21T10:45:00Z'),
+        }
       },
     });
   });

@@ -100,12 +100,13 @@ export class BookingService {
       },
       orderBy: [{ vehicleId: 'asc' }, { startDateTime: 'asc' }],
     });
-    
 
     const availableVehicles = filteredVehicles.filter(
       (vehicle) =>
         !this.conflicts.hasConflict(
-          reservations.filter((reservation) => reservation.vehicleId === vehicle.id),
+          reservations.filter(
+            (reservation) => reservation.vehicleId === vehicle.id,
+          ),
           window,
           vehicle.minimumMinutesBetweenBookings,
         ),
@@ -205,7 +206,6 @@ export class BookingService {
   ) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${vehicleId}))`;
   }
-
 
   private async incrementVehicleReservationStats(
     tx: BookingTransaction,
