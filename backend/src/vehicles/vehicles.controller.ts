@@ -13,8 +13,8 @@ export class VehiclesController {
   }
 
   @Get('meta')
-  getMeta(): Promise<VehicleMetaModel> {
-    return this.vehiclesService.getMeta();
+  getMeta(@Query() query: ListVehiclesQueryDto): Promise<VehicleMetaModel> {
+    return this.vehiclesService.getMeta(query);
   }
 
   @Get(':id')

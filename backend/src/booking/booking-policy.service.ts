@@ -28,7 +28,7 @@ export class BookingPolicyService {
     };
   }
 
-  assertWithinBookingHorizon(
+  bookingValidation(
     startDateTime: Date,
     now = new Date(),
     horizonDays = DEFAULT_BOOKING_HORIZON_DAYS,

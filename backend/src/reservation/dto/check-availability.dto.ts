@@ -1,7 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsNotEmpty, IsString, Min, Max } from 'class-validator';
 import { BookingAvailabilityRequest } from '../../shared/models/booking.model';
+
+const MAX_BOOKING_DURATION_MINS = process.env.MAX_BOOKING_DURATION_MINS ? parseInt(process.env.MAX_BOOKING_DURATION_MINS) : 360;
 
 export class CheckAvailabilityDto implements BookingAvailabilityRequest {
   @ApiProperty({ example: 'dublin' })
@@ -22,5 +24,6 @@ export class CheckAvailabilityDto implements BookingAvailabilityRequest {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(MAX_BOOKING_DURATION_MINS, { message: 'duration can be between 1 min upto 6 hours.' })
   durationMins!: number;
 }

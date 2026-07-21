@@ -61,16 +61,59 @@ describe('VehiclesService', () => {
     ]);
   });
 
-  it('returns unique sorted locations and vehicle types for metadata', async () => {
+  it('returns vehicle type scoped metadata with available locations and rules', async () => {
     prisma.vehicle.findMany.mockResolvedValue([
-      { location: 'dublin', type: 'tesla_modelx' },
-      { location: 'cork', type: 'tesla_model3' },
-      { location: 'dublin', type: 'tesla_model3' },
+      {
+        location: 'cork',
+        type: 'tesla_model3',
+        availableFromTime: '09:00:00',
+        availableToTime: '17:00:00',
+        availableDays: ['mon', 'tue'],
+        minimumMinutesBetweenBookings: 15,
+      },
+      {
+        location: 'dublin',
+        type: 'tesla_model3',
+        availableFromTime: '08:00:00',
+        availableToTime: '18:00:00',
+        availableDays: ['mon', 'tue', 'wed'],
+        minimumMinutesBetweenBookings: 15,
+      },
     ]);
 
-    await expect(service.getMeta()).resolves.toEqual({
+    await expect(service.getMeta({ type: ' Tesla_Model3 ' })).resolves.toEqual({
       locations: ['cork', 'dublin'],
-      vehicleTypes: ['tesla_model3', 'tesla_modelx'],
+      vehicleTypes: ['tesla_model3'],
+      availabilityRules: [
+        {
+          location: 'cork',
+          availableFromTime: '09:00:00',
+          availableToTime: '17:00:00',
+          availableDays: ['mon', 'tue'],
+          minimumMinutesBetweenBookings: 15,
+        },
+        {
+          location: 'dublin',
+          availableFromTime: '08:00:00',
+          availableToTime: '18:00:00',
+          availableDays: ['mon', 'tue', 'wed'],
+          minimumMinutesBetweenBookings: 15,
+        },
+      ],
+    });
+    expect(prisma.vehicle.findMany).toHaveBeenCalledWith({
+      where: {
+        type: 'tesla_model3',
+      },
+      select: {
+        location: true,
+        type: true,
+        availableFromTime: true,
+        availableToTime: true,
+        availableDays: true,
+        minimumMinutesBetweenBookings: true,
+      },
+      orderBy: [{ location: 'asc' }, { type: 'asc' }],
     });
   });
 

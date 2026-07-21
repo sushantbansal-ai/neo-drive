@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  toUniqueVehicleAvailabilityRuleModels,
   toVehicleModel,
   VehicleMetaModel,
   VehicleModel,
@@ -40,11 +41,22 @@ export class VehiclesService {
     return toVehicleModel(vehicle);
   }
 
-  async getMeta(): Promise<VehicleMetaModel> {
+  async getMeta(query: ListVehiclesQueryDto = {}): Promise<VehicleMetaModel> {
+    const location = normalizeText(query.location);
+    const type = normalizeText(query.type);
+
     const vehicles = await this.prisma.vehicle.findMany({
+      where: {
+        ...(location ? { location } : {}),
+        ...(type ? { type } : {}),
+      },
       select: {
         location: true,
         type: true,
+        availableFromTime: true,
+        availableToTime: true,
+        availableDays: true,
+        minimumMinutesBetweenBookings: true,
       },
       orderBy: [{ location: 'asc' }, { type: 'asc' }],
     });
@@ -52,6 +64,7 @@ export class VehiclesService {
     return {
       locations: uniqueSorted(vehicles.map((vehicle) => vehicle.location)),
       vehicleTypes: uniqueSorted(vehicles.map((vehicle) => vehicle.type)),
+      availabilityRules: toUniqueVehicleAvailabilityRuleModels(vehicles),
     };
   }
 }

@@ -12,6 +12,9 @@ describe('BookingService', () => {
     vehicle: {
       findMany: jest.fn(),
     },
+    reservation: {
+      findMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -38,13 +41,6 @@ describe('BookingService', () => {
         availableToTime: '18:00:00',
         availableDays: ['mon', 'tue', 'wed', 'thur', 'fri', 'sat', 'sun'],
         minimumMinutesBetweenBookings: 15,
-        reservations: [
-          {
-            vehicleId: 'tesla_1001',
-            startDateTime: new Date('2026-07-21T09:00:00Z'),
-            endDateTime: new Date('2026-07-21T09:45:00Z'),
-          },
-        ],
         createdAt: new Date('2026-07-20T00:00:00Z'),
         updatedAt: new Date('2026-07-20T00:00:00Z'),
       },
@@ -56,9 +52,15 @@ describe('BookingService', () => {
         availableToTime: '18:00:00',
         availableDays: ['mon', 'tue', 'wed', 'thur', 'fri', 'sat', 'sun'],
         minimumMinutesBetweenBookings: 15,
-        reservations: [],
         createdAt: new Date('2026-07-20T00:00:00Z'),
         updatedAt: new Date('2026-07-20T00:00:00Z'),
+      },
+    ]);
+    prisma.reservation.findMany.mockResolvedValue([
+      {
+        vehicleId: 'tesla_1001',
+        startDateTime: new Date('2026-07-21T09:00:00Z'),
+        endDateTime: new Date('2026-07-21T09:45:00Z'),
       },
     ]);
 
@@ -89,10 +91,21 @@ describe('BookingService', () => {
         location: 'dublin',
         type: 'tesla_model3',
       },
-      include: {
-        reservations: true,
-      },
       orderBy: [{ location: 'asc' }, { type: 'asc' }, { id: 'asc' }],
+    });
+    expect(prisma.reservation.findMany).toHaveBeenCalledWith({
+      where: {
+        vehicleId: {
+          in: ['tesla_1001', 'tesla_1002'],
+        },
+        startDateTime: {
+          lte: new Date('2026-07-21T18:00:00.000Z'),
+        },
+        endDateTime: {
+          gte: new Date('2026-07-21T02:00:00.000Z'),
+        },
+      },
+      orderBy: [{ vehicleId: 'asc' }, { startDateTime: 'asc' }],
     });
   });
 
@@ -108,12 +121,12 @@ describe('BookingService', () => {
           availableToTime: '18:00:00',
           availableDays: ['mon', 'tue', 'wed', 'thur', 'fri', 'sat', 'sun'],
           minimumMinutesBetweenBookings: 15,
-          reservations: [],
           createdAt: new Date('2026-07-20T00:00:00Z'),
           updatedAt: new Date('2026-07-20T00:00:00Z'),
         }),
       },
       reservation: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: 1,
           vehicleId: 'tesla_1001',
@@ -150,7 +163,18 @@ describe('BookingService', () => {
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(tx.vehicle.findUnique).toHaveBeenCalledWith({
       where: { id: 'tesla_1001' },
-      include: { reservations: true },
+    });
+    expect(tx.reservation.findMany).toHaveBeenCalledWith({
+      where: {
+        vehicleId: 'tesla_1001',
+        startDateTime: {
+          lte: new Date('2026-07-21T18:00:00.000Z'),
+        },
+        endDateTime: {
+          gte: new Date('2026-07-21T02:00:00.000Z'),
+        },
+      },
+      orderBy: [{ startDateTime: 'asc' }],
     });
     expect(tx.reservation.create).toHaveBeenCalledWith({
       data: {
@@ -176,18 +200,18 @@ describe('BookingService', () => {
           availableToTime: '18:00:00',
           availableDays: ['mon', 'tue', 'wed', 'thur', 'fri', 'sat', 'sun'],
           minimumMinutesBetweenBookings: 15,
-          reservations: [
-            {
-              vehicleId: 'tesla_1001',
-              startDateTime: new Date('2026-07-21T09:30:00Z'),
-              endDateTime: new Date('2026-07-21T10:15:00Z'),
-            },
-          ],
           createdAt: new Date('2026-07-20T00:00:00Z'),
           updatedAt: new Date('2026-07-20T00:00:00Z'),
         }),
       },
       reservation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            vehicleId: 'tesla_1001',
+            startDateTime: new Date('2026-07-21T09:30:00Z'),
+            endDateTime: new Date('2026-07-21T10:15:00Z'),
+          },
+        ]),
         create: jest.fn(),
       },
     };

@@ -21,7 +21,7 @@ describe('BookingPolicyService', () => {
 
   it('rejects bookings outside the 14 day horizon', () => {
     expect(() =>
-      service.assertWithinBookingHorizon(
+      service.bookingValidation(
         new Date('2026-08-05T09:00:00Z'),
         new Date('2026-07-20T09:00:00Z'),
       ),
