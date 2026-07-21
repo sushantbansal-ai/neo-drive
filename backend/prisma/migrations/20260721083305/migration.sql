@@ -1,0 +1,3 @@
+-- No-op.
+-- This migration was generated against an earlier draft of VehicleReservationStats
+-- before the table creation migration was added.

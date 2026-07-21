@@ -15,6 +15,9 @@ describe('BookingService', () => {
     reservation: {
       findMany: jest.fn(),
     },
+    vehicleReservationStats: {
+      findMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -63,6 +66,18 @@ describe('BookingService', () => {
         endDateTime: new Date('2026-07-21T09:45:00Z'),
       },
     ]);
+    prisma.vehicleReservationStats.findMany.mockResolvedValue([
+      {
+        vehicleId: 'tesla_1001',
+        reservationCount: 1,
+        lastReservationEndDateTime: new Date('2026-07-21T09:45:00Z'),
+      },
+      {
+        vehicleId: 'tesla_1002',
+        reservationCount: 0,
+        lastReservationEndDateTime: null,
+      },
+    ]);
 
     await expect(
       service.findAvailability({
@@ -107,6 +122,13 @@ describe('BookingService', () => {
       },
       orderBy: [{ vehicleId: 'asc' }, { startDateTime: 'asc' }],
     });
+    expect(prisma.vehicleReservationStats.findMany).toHaveBeenCalledWith({
+      where: {
+        vehicleId: {
+          in: ['tesla_1001', 'tesla_1002'],
+        },
+      },
+    });
   });
 
   it('books a reservation inside a transaction after locking and rechecking the vehicle', async () => {
@@ -136,6 +158,10 @@ describe('BookingService', () => {
           customerEmail: 'john@example.com',
           customerPhone: '+353851234567',
         }),
+      },
+      vehicleReservationStats: {
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     prisma.$transaction.mockImplementation((callback) => callback(tx));
@@ -186,6 +212,35 @@ describe('BookingService', () => {
         customerPhone: '+353851234567',
       },
     });
+    expect(tx.vehicleReservationStats.upsert).toHaveBeenCalledWith({
+      where: { vehicleId: 'tesla_1001' },
+      create: {
+        vehicleId: 'tesla_1001',
+        reservationCount: 1,
+        lastReservationEndDateTime: new Date('2026-07-21T10:45:00Z'),
+      },
+      update: {
+        reservationCount: {
+          increment: 1,
+        },
+      },
+    });
+    expect(tx.vehicleReservationStats.updateMany).toHaveBeenCalledWith({
+      where: {
+        vehicleId: 'tesla_1001',
+        OR: [
+          { lastReservationEndDateTime: null },
+          {
+            lastReservationEndDateTime: {
+              lt: new Date('2026-07-21T10:45:00Z'),
+            },
+          },
+        ],
+      },
+      data: {
+        lastReservationEndDateTime: new Date('2026-07-21T10:45:00Z'),
+      },
+    });
   });
 
   it('rejects booking when the vehicle has a conflicting reservation', async () => {
@@ -214,6 +269,10 @@ describe('BookingService', () => {
         ]),
         create: jest.fn(),
       },
+      vehicleReservationStats: {
+        upsert: jest.fn(),
+        updateMany: jest.fn(),
+      },
     };
     prisma.$transaction.mockImplementation((callback) => callback(tx));
 
@@ -229,5 +288,6 @@ describe('BookingService', () => {
     ).rejects.toThrow('Vehicle already has a reservation');
 
     expect(tx.reservation.create).not.toHaveBeenCalled();
+    expect(tx.vehicleReservationStats.upsert).not.toHaveBeenCalled();
   });
 });

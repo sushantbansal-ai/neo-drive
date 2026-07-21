@@ -24,7 +24,7 @@ export type BookingWindow = {
 export type VehicleReservationStats = {
   vehicleId: string;
   reservationCount: number;
-  lastReservationEndDateTime?: Date;
+  lastReservationEndDateTime?: Date | null;
 };
 
 export type BookingAvailabilityResult = {

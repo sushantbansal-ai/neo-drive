@@ -83,6 +83,45 @@ async function seedReservations(reservations: ReservationSeed[]) {
   }
 }
 
+async function seedVehicleReservationStats(reservations: ReservationSeed[]) {
+  const statsByVehicleId = new Map<
+    string,
+    { reservationCount: number; lastReservationEndDateTime: Date | null }
+  >();
+
+  for (const reservation of reservations) {
+    const currentStats = statsByVehicleId.get(reservation.vehicleId) ?? {
+      reservationCount: 0,
+      lastReservationEndDateTime: null,
+    };
+    const endDateTime = new Date(reservation.endDateTime);
+
+    statsByVehicleId.set(reservation.vehicleId, {
+      reservationCount: currentStats.reservationCount + 1,
+      lastReservationEndDateTime:
+        !currentStats.lastReservationEndDateTime ||
+        endDateTime > currentStats.lastReservationEndDateTime
+          ? endDateTime
+          : currentStats.lastReservationEndDateTime,
+    });
+  }
+
+  for (const [vehicleId, stats] of statsByVehicleId) {
+    await prisma.vehicleReservationStats.upsert({
+      where: { vehicleId },
+      create: {
+        vehicleId,
+        reservationCount: stats.reservationCount,
+        lastReservationEndDateTime: stats.lastReservationEndDateTime,
+      },
+      update: {
+        reservationCount: stats.reservationCount,
+        lastReservationEndDateTime: stats.lastReservationEndDateTime,
+      },
+    });
+  }
+}
+
 async function main() {
   const [{ vehicles }, { reservations }] = await Promise.all([
     readJson<VehiclesFile>('vehicles.json'),
@@ -91,6 +130,7 @@ async function main() {
 
   await seedVehicles(vehicles);
   await seedReservations(reservations);
+  await seedVehicleReservationStats(reservations);
 
   console.log(
     `Seeded ${vehicles.length} vehicles and ${reservations.length} reservations.`,

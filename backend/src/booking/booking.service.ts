@@ -1,11 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BookingAvailabilityRequest,
   BookingAvailabilityResult,
   CreateReservationRequest,
   ReservationModel,
-  VehicleReservationStats,
 } from '../shared/models/booking.model';
 import { ReservationWindow } from '../shared/models/reservation.model';
 import { toVehicleModel, VehicleModel } from '../shared/models/vehicle.model';
@@ -20,20 +23,9 @@ const MAX_BOOKING_DURATION_MINS = process.env.MAX_BOOKING_DURATION_MINS
   : 360;
 const RESERVATION_LOOKUP_BUFFER_MINS = MAX_BOOKING_DURATION_MINS + 120;
 
-type VehicleWithReservations = VehicleModel & {
-  reservations: ReservationWindow[];
-  createdAt?: Date;
-  updatedAt?: Date;
-};
-
-type VehicleRecord = VehicleModel & {
-  createdAt?: Date;
-  updatedAt?: Date;
-};
-
 type BookingTransaction = Pick<
   PrismaService,
-  '$executeRaw' | 'vehicle' | 'reservation'
+  '$executeRaw' | 'vehicle' | 'reservation' | 'vehicleReservationStats'
 >;
 
 type ReservationRecord = {
@@ -83,10 +75,18 @@ export class BookingService {
       return this.toAvailabilityResult(null, window);
     }
 
+    const filteredVehicles = vehicles.filter((vehicle) =>
+      this.policy.isVehicleAvailableForWindow(toVehicleModel(vehicle), window),
+    );
+
+    if (filteredVehicles.length === 0) {
+      return this.toAvailabilityResult(null, window);
+    }
+
     const reservations = await this.prisma.reservation.findMany({
       where: {
         vehicleId: {
-          in: vehicles.map((vehicle) => vehicle.id),
+          in: filteredVehicles.map((vehicle) => vehicle.id),
         },
         startDateTime: {
           lte: addMinutes(window.startDateTime, RESERVATION_LOOKUP_BUFFER_MINS),
@@ -100,28 +100,19 @@ export class BookingService {
       },
       orderBy: [{ vehicleId: 'asc' }, { startDateTime: 'asc' }],
     });
+    
 
-    const vehiclesWithReservations = this.attachReservations(
-      vehicles,
-      reservations,
+    const availableVehicles = filteredVehicles.filter(
+      (vehicle) =>
+        !this.conflicts.hasConflict(
+          reservations.filter((reservation) => reservation.vehicleId === vehicle.id),
+          window,
+          vehicle.minimumMinutesBetweenBookings,
+        ),
     );
 
-    const availableVehicles = vehiclesWithReservations
-      .filter((vehicle) =>
-        this.policy.isVehicleAvailableForWindow(toVehicleModel(vehicle), window),
-      )
-      .filter(
-        (vehicle) =>
-          !this.conflicts.hasConflict(
-            vehicle.reservations,
-            window,
-            vehicle.minimumMinutesBetweenBookings,
-          ),
-      );
-
-    const selectedVehicle = this.distribution.selectVehicle(
+    const selectedVehicle = await this.distribution.selectVehicle(
       availableVehicles.map(toVehicleModel),
-      this.toReservationStats(vehiclesWithReservations),
     );
 
     return this.toAvailabilityResult(selectedVehicle, window);
@@ -144,7 +135,9 @@ export class BookingService {
       });
 
       if (!vehicle) {
-        throw new NotFoundException(`Vehicle ${request.vehicleId} was not found.`);
+        throw new NotFoundException(
+          `Vehicle ${request.vehicleId} was not found.`,
+        );
       }
 
       const vehicleModel = toVehicleModel(vehicle);
@@ -152,7 +145,10 @@ export class BookingService {
         where: {
           vehicleId: request.vehicleId,
           startDateTime: {
-            lte: addMinutes(window.startDateTime, RESERVATION_LOOKUP_BUFFER_MINS),
+            lte: addMinutes(
+              window.startDateTime,
+              RESERVATION_LOOKUP_BUFFER_MINS,
+            ),
           },
           endDateTime: {
             gte: subtractMinutes(
@@ -193,6 +189,12 @@ export class BookingService {
         },
       });
 
+      await this.incrementVehicleReservationStats(
+        tx,
+        request.vehicleId,
+        window.endDateTime,
+      );
+
       return this.toReservationModel(reservation);
     });
   }
@@ -204,44 +206,28 @@ export class BookingService {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${vehicleId}))`;
   }
 
-  private attachReservations(
-    vehicles: VehicleRecord[],
-    reservations: ReservationWindow[],
-  ): VehicleWithReservations[] {
-    const reservationsByVehicleId = new Map<string, ReservationWindow[]>();
 
-    for (const reservation of reservations) {
-      const vehicleReservations =
-        reservationsByVehicleId.get(reservation.vehicleId) ?? [];
-
-      vehicleReservations.push(reservation);
-      reservationsByVehicleId.set(reservation.vehicleId, vehicleReservations);
-    }
-
-    return vehicles.map((vehicle) => ({
-      ...vehicle,
-      reservations: reservationsByVehicleId.get(vehicle.id) ?? [],
-    }));
-  }
-
-  private toReservationStats(
-    vehicles: VehicleWithReservations[],
-  ): VehicleReservationStats[] {
-    return vehicles.map((vehicle) => ({
-      vehicleId: vehicle.id,
-      reservationCount: vehicle.reservations.length,
-      lastReservationEndDateTime: this.getLastReservationEndDateTime(
-        vehicle.reservations,
-      ),
-    }));
-  }
-
-  private getLastReservationEndDateTime(
-    reservations: ReservationWindow[],
-  ): Date | undefined {
-    return reservations
-      .map((reservation) => reservation.endDateTime)
-      .sort((left, right) => right.getTime() - left.getTime())[0];
+  private async incrementVehicleReservationStats(
+    tx: BookingTransaction,
+    vehicleId: string,
+    reservationEndDateTime: Date,
+  ) {
+    await tx.vehicleReservationStats.upsert({
+      where: { vehicleId },
+      create: {
+        vehicleId,
+        reservationCount: 1,
+        lastReservationEndDateTime: reservationEndDateTime,
+      },
+      update: {
+        reservationCount: {
+          increment: 1,
+        },
+        lastReservationEndDateTime: {
+          set: reservationEndDateTime,
+        },
+      },
+    });
   }
 
   private toAvailabilityResult(

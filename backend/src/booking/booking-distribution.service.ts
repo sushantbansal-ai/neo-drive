@@ -1,45 +1,29 @@
 import { Injectable } from '@nestjs/common';
-import { VehicleReservationStats } from '../shared/models/booking.model';
 import { VehicleModel } from '../shared/models/vehicle.model';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class BookingDistributionService {
-  selectVehicle(
+  constructor(private readonly prisma: PrismaService) { }
+
+  async selectVehicle(
     vehicles: VehicleModel[],
-    stats: VehicleReservationStats[],
-  ): VehicleModel | null {
+  ): Promise<VehicleModel | null> {
     if (vehicles.length === 0) {
       return null;
     }
 
-    const statsByVehicleId = new Map(
-      stats.map((vehicleStats) => [vehicleStats.vehicleId, vehicleStats]),
-    );
+    const vehicleStats = await this.prisma.vehicleReservationStats.findMany({
+      where: {
+        vehicleId: {
+          in: vehicles.map((vehicle) => vehicle.id),
+        },
+      },
+      orderBy: [{ reservationCount: 'asc', }, { lastReservationEndDateTime: 'desc' }],
+    });
 
-    return [...vehicles].sort((left, right) => {
-      const leftStats = statsByVehicleId.get(left.id);
-      const rightStats = statsByVehicleId.get(right.id);
-      const countDifference =
-        (leftStats?.reservationCount ?? 0) -
-        (rightStats?.reservationCount ?? 0);
-
-      if (countDifference !== 0) {
-        return countDifference;
-      }
-
-      const lastReservationDifference =
-        this.toComparableTime(leftStats?.lastReservationEndDateTime) -
-        this.toComparableTime(rightStats?.lastReservationEndDateTime);
-
-      if (lastReservationDifference !== 0) {
-        return lastReservationDifference;
-      }
-
-      return left.id.localeCompare(right.id);
-    })[0];
-  }
-
-  private toComparableTime(date?: Date): number {
-    return date?.getTime() ?? 0;
+    return vehicleStats.length > 0
+      ? vehicles.find((vehicle) => vehicle.id === vehicleStats[0].vehicleId) ?? null
+      : vehicles[0];
   }
 }

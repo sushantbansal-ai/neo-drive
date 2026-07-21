@@ -14,16 +14,17 @@ datasource db {
 }
 
 model Vehicle {
-  id                            String        @id
+  id                            String                   @id
   type                          String
   location                      String
   availableFromTime             String
   availableToTime               String
-  availableDays                 String[]      @default([])
-  minimumMinutesBetweenBookings Int           @default(15)
-  createdAt                     DateTime      @default(now())
-  updatedAt                     DateTime      @updatedAt
+  availableDays                 String[]                 @default([])
+  minimumMinutesBetweenBookings Int                      @default(15)
+  createdAt                     DateTime                 @default(now())
+  updatedAt                     DateTime                 @updatedAt
   reservations                  Reservation[]
+  reservationStats              VehicleReservationStats?
 
   @@index([type, location])
 }
@@ -42,4 +43,14 @@ model Reservation {
 
   @@index([vehicleId, startDateTime, endDateTime])
   @@index([startDateTime, endDateTime])
+}
+
+model VehicleReservationStats {
+  vehicleId                  String    @id
+  reservationCount           Int       @default(0)
+  lastReservationEndDateTime DateTime? @db.Timestamptz(3)
+  updatedAt                  DateTime  @updatedAt
+  vehicle                    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([reservationCount, lastReservationEndDateTime], map: "VehicleReservationStats_reservationCount_lastReservationEnd_idx")
 }
